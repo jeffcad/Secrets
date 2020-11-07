@@ -2,28 +2,36 @@ require('dotenv').config()
 const express = require('express')
 const bodyParser = require('body-parser')
 const mongoose = require('mongoose')
-const bcrypt = require('bcrypt')
-const saltRounds = 10
+const session = require('express-session')
+const passport = require('passport')
+const passportLocalMongoose = require('passport-local-mongoose')
 
 const app = express()
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(express.static('public'))
 app.set('view engine', 'ejs')
 
-mongoose.connect('mongodb://localhost:27017/userDB', { useNewUrlParser: true, useUnifiedTopology: true });
+app.use(session({
+    secret: process.env.SECRET,
+    resave: false,
+    saveUninitialized: false
+}))
 
-const userSchema = new mongoose.Schema({
-    email: {
-        type: String,
-        required: [true]
-    },
-    password: {
-        type: String,
-        required: [true]
-    }
-})
+app.use(passport.initialize())
+app.use(passport.session())
+
+mongoose.connect('mongodb://localhost:27017/userDB', { useNewUrlParser: true, useUnifiedTopology: true })
+mongoose.set('useCreateIndex', true)
+
+const userSchema = new mongoose.Schema({})
+
+userSchema.plugin(passportLocalMongoose)
 
 const User = mongoose.model('User', userSchema)
+
+passport.use(User.createStrategy())
+passport.serializeUser(User.serializeUser())
+passport.deserializeUser(User.deserializeUser())
 
 const port = 3000
 app.listen(port, console.log(`Server listening on port ${port}!`))
@@ -38,18 +46,14 @@ app.route('/register')
     })
     .post(async (req, res) => {
         try {
-            const email = req.body.email
-            const password = await bcrypt.hash(req.body.password, saltRounds)
-            const registerCheck = await User.findOne({ email })
-            if (registerCheck) {
-                res.send('This email address has already been registered. Please use the login page instead.')
-            } else {
-                const newUser = new User({ email, password })
-                await newUser.save()
-                res.render('secrets')
-            }
+            await User.register({ username: req.body.username }, req.body.password)
+            passport.authenticate('local', {
+                successRedirect: '/secrets',
+                failureRedirect: '/register'
+            })(req, res);
         } catch (err) {
-            res.send('Error with making user account, please try again.')
+            console.log('Error with registration: ', err)
+            res.redirect('/register')
         }
     })
 
@@ -57,21 +61,22 @@ app.route('/login')
     .get((req, res) => {
         res.render('login')
     })
-    .post(async (req, res) => {
-        try {
-            const { email, password } = req.body
-            const foundUser = await User.findOne({ email })
-            if (foundUser) {
-                const match = await bcrypt.compare(password, foundUser.password)
-                if (match) {
-                    res.render('secrets')
-                } else {
-                    res.send("Password doesn't match, please try again.")
-                }
-            } else {
-                res.send('No record of that username was found.')
-            }
-        } catch (err) {
-            res.send('Error with logging in, please try again.')
-        }
+    .post((req, res) => {
+        passport.authenticate('local', {
+            successRedirect: '/secrets',
+            failureRedirect: '/login'
+        })(req, res);
     })
+
+app.get('/secrets', (req, res) => {
+    if (req.isAuthenticated()) {
+        res.render('secrets')
+    } else {
+        res.redirect('/login')
+    }
+})
+
+app.get('/logout', (req, res) => {
+    req.logout()
+    res.redirect('/')
+})
