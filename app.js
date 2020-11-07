@@ -2,7 +2,7 @@ require('dotenv').config()
 const express = require('express')
 const bodyParser = require('body-parser')
 const mongoose = require('mongoose')
-const encrypt = require('mongoose-encryption')
+const md5 = require('md5')
 
 const app = express()
 app.use(bodyParser.urlencoded({ extended: true }))
@@ -22,8 +22,6 @@ const userSchema = new mongoose.Schema({
     }
 })
 
-userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ['password'] })
-
 const User = mongoose.model('User', userSchema)
 
 const port = 3000
@@ -39,7 +37,8 @@ app.route('/register')
     })
     .post(async (req, res) => {
         try {
-            const { email, password } = req.body
+            const email = req.body.email
+            const password = md5(req.body.password)
             const registerCheck = await User.findOne({ email })
             if (registerCheck) {
                 res.send('This email address has already been registered. Please use the login page instead.')
@@ -59,7 +58,8 @@ app.route('/login')
     })
     .post(async (req, res) => {
         try {
-            const { email, password } = req.body
+            const email = req.body.email
+            const password = md5(req.body.password)
             const foundUser = await User.findOne({ email })
             if (foundUser) {
                 if (foundUser.password === password) {
