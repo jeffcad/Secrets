@@ -2,7 +2,8 @@ require('dotenv').config()
 const express = require('express')
 const bodyParser = require('body-parser')
 const mongoose = require('mongoose')
-const md5 = require('md5')
+const bcrypt = require('bcrypt')
+const saltRounds = 10
 
 const app = express()
 app.use(bodyParser.urlencoded({ extended: true }))
@@ -38,7 +39,7 @@ app.route('/register')
     .post(async (req, res) => {
         try {
             const email = req.body.email
-            const password = md5(req.body.password)
+            const password = await bcrypt.hash(req.body.password, saltRounds)
             const registerCheck = await User.findOne({ email })
             if (registerCheck) {
                 res.send('This email address has already been registered. Please use the login page instead.')
@@ -58,11 +59,11 @@ app.route('/login')
     })
     .post(async (req, res) => {
         try {
-            const email = req.body.email
-            const password = md5(req.body.password)
+            const { email, password } = req.body
             const foundUser = await User.findOne({ email })
             if (foundUser) {
-                if (foundUser.password === password) {
+                const match = await bcrypt.compare(password, foundUser.password)
+                if (match) {
                     res.render('secrets')
                 } else {
                     res.send("Password doesn't match, please try again.")
