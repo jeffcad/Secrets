@@ -27,6 +27,7 @@ mongoose.connect('mongodb://localhost:27017/userDB', { useNewUrlParser: true, us
 mongoose.set('useCreateIndex', true)
 
 const userSchema = new mongoose.Schema({
+    secret: String,
     googleId: String,
     facebookId: String
 })
@@ -64,7 +65,7 @@ passport.use(new GoogleStrategy({
 passport.use(new FacebookStrategy({
     clientID: process.env.FACEBOOK_ID,
     clientSecret: process.env.FACEBOOK_SECRET,
-    callbackURL: "http://localhost:3000/auth/facebook/secrets"
+    callbackURL: 'http://localhost:3000/auth/facebook/secrets'
 },
     function (accessToken, refreshToken, profile, cb) {
         User.findOrCreate({ facebookId: profile.id }, function (err, user) {
@@ -108,14 +109,6 @@ app.route('/login')
         })(req, res)
     })
 
-app.get('/secrets', (req, res) => {
-    if (req.isAuthenticated()) {
-        res.render('secrets')
-    } else {
-        res.redirect('/login')
-    }
-})
-
 app.get('/auth/google',
     passport.authenticate('google', { scope: ['profile'] }))
 
@@ -134,6 +127,41 @@ app.get('/auth/facebook/secrets',
     (req, res) => {
         // Successful authentication, redirect to secrets page
         res.redirect('/secrets');
+    })
+
+app.get('/secrets', async (req, res) => {
+    try {
+        const usersWithSecrets = await User.find({ 'secret': { $ne: null } })
+        if (usersWithSecrets) {
+            res.render('secrets', { usersWithSecrets })
+        }
+    } catch (err) {
+        console.log('Error with getting secrets: ', err)
+        res.redirect('/secrets')
+    }
+})
+
+app.route('/submit')
+    .get((req, res) => {
+        if (req.isAuthenticated()) {
+            res.render('submit')
+        } else {
+            res.redirect('/login')
+        }
+    })
+    .post(async (req, res) => {
+        try {
+            const submittedSecret = req.body.secret
+            const foundUser = await User.findById(req.user.id)
+            if (foundUser) {
+                foundUser.secret = submittedSecret
+                await foundUser.save()
+                res.redirect('/secrets')
+            }
+        } catch (err) {
+            console.log('Error with submitting secret: ', err)
+            res.redirect('/secrets')
+        }
     })
 
 app.get('/logout', (req, res) => {
